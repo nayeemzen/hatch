@@ -46,22 +46,26 @@ type browserStyles struct {
 }
 
 func defaultBrowserStyles() browserStyles {
+	neutralText := lipgloss.AdaptiveColor{Light: "#111827", Dark: "#E5E7EB"}
+	neutralMuted := lipgloss.AdaptiveColor{Light: "#5C6770", Dark: "#9CA3AF"}
+	neutralPlaceholder := lipgloss.AdaptiveColor{Light: "#64748B", Dark: "#94A3B8"}
+
 	return browserStyles{
 		app: lipgloss.NewStyle().
 			Padding(1, 2).
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("#0B7285")),
 		title:         lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#0B7285")),
-		subtitle:      lipgloss.NewStyle().Foreground(lipgloss.Color("#5C6770")),
+		subtitle:      lipgloss.NewStyle().Foreground(neutralMuted),
 		searchLabel:   lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#E67700")),
 		searchPrompt:  lipgloss.NewStyle().Foreground(lipgloss.Color("#0B7285")).Bold(true),
-		query:         lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#1F2933")),
-		placeholder:   lipgloss.NewStyle().Foreground(lipgloss.Color("#94A3B8")),
-		project:       lipgloss.NewStyle().Foreground(lipgloss.Color("#1F2933")),
+		query:         lipgloss.NewStyle().Bold(true).Foreground(neutralText),
+		placeholder:   lipgloss.NewStyle().Foreground(neutralPlaceholder),
+		project:       lipgloss.NewStyle().Foreground(neutralText),
 		projectActive: lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#F8F9FA")).Background(lipgloss.Color("#0B7285")).Padding(0, 1),
-		empty:         lipgloss.NewStyle().Foreground(lipgloss.Color("#6C757D")),
-		detail:        lipgloss.NewStyle().Foreground(lipgloss.Color("#5C6770")),
-		help:          lipgloss.NewStyle().Foreground(lipgloss.Color("#5C6770")),
+		empty:         lipgloss.NewStyle().Foreground(neutralMuted),
+		detail:        lipgloss.NewStyle().Foreground(neutralMuted),
+		help:          lipgloss.NewStyle().Foreground(neutralMuted),
 		status:        lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#0F766E")),
 		confirm: lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
