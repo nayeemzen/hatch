@@ -4,6 +4,8 @@ set -euo pipefail
 VERSION="${1:-dev}"
 OUT_DIR="${2:-dist}"
 
+mkdir -p "$(dirname "$OUT_DIR")"
+OUT_DIR="$(cd "$(dirname "$OUT_DIR")" && pwd)/$(basename "$OUT_DIR")"
 mkdir -p "$OUT_DIR"
 rm -f "$OUT_DIR"/*
 
@@ -28,7 +30,7 @@ build_windows() {
   cp README.md LICENSE "$tmp/"
   (
     cd "$tmp"
-    zip -q "$OLDPWD/$OUT_DIR/hatch_${VERSION}_windows_${arch}.zip" hatch.exe README.md LICENSE
+    zip -q "$OUT_DIR/hatch_${VERSION}_windows_${arch}.zip" hatch.exe README.md LICENSE
   )
   rm -rf "$tmp"
 }
