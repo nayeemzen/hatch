@@ -22,31 +22,25 @@
 
 ### Prebuilt binary
 
-Install directly from a GitHub release:
+Install with the hosted script:
 
 ```bash
-VERSION=v0.1.0
-OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
-ARCH="$(uname -m)"
-
-case "$ARCH" in
-  x86_64) ARCH=amd64 ;;
-  aarch64|arm64) ARCH=arm64 ;;
-  *) echo "unsupported arch: $ARCH" && exit 1 ;;
-esac
-
-curl -fsSL "https://github.com/nayeemzen/hatch/releases/download/${VERSION}/hatch_${VERSION}_${OS}_${ARCH}.tar.gz" | tar -xz
-install -m 0755 hatch ~/.local/bin/hatch
+curl -fsSL https://raw.githubusercontent.com/nayeemzen/hatch/main/install.sh | sh
 ```
 
-If `~/.local/bin` is not in your `PATH`, add it:
+Pin a specific version:
 
 ```bash
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
-source ~/.zshrc
+curl -fsSL https://raw.githubusercontent.com/nayeemzen/hatch/main/install.sh | VERSION=v0.1.0 sh
 ```
 
-Release files are available at:
+Install to a custom directory:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nayeemzen/hatch/main/install.sh | INSTALL_DIR="$HOME/bin" sh
+```
+
+Release artifacts are available at:
 `https://github.com/nayeemzen/hatch/releases`
 
 ### Go install
