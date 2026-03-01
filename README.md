@@ -10,13 +10,19 @@
 
 - `hatch <name>`: create `~/hatchery/<yyyy-mm-dd>-<name>`
 - `hatch <path> <name>`: copy a source directory into `~/hatchery/<yyyy-mm-dd>-<name>`
-- `hatch` interactive browser:
-- Type to fuzzy filter projects
-- Arrow keys to move
-- `Enter` to open
-- `Ctrl+A` to archive into `~/hatchery/archive/`
-- `Ctrl+R` to remove
+- `hatch`: interactive browser with live fuzzy filtering
+- Browser actions: arrow keys to move, `Enter` to open, `Ctrl+A` to archive, `Ctrl+R` to remove
 - Shell hook for auto-`cd`
+
+## Demo
+
+![hatch demo](assets/media/hatch-demo.gif)
+
+### Screenshots
+
+![Create and copy projects](assets/media/screenshots/hatch-create-copy.png)
+![Interactive browser](assets/media/screenshots/hatch-browser.png)
+![CLI help](assets/media/screenshots/hatch-help.png)
 
 ## Install
 
