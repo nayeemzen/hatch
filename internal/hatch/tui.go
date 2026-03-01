@@ -49,32 +49,40 @@ type browserStyles struct {
 }
 
 func defaultBrowserStyles() browserStyles {
-	neutralText := lipgloss.AdaptiveColor{Light: "#111827", Dark: "#E5E7EB"}
-	neutralMuted := lipgloss.AdaptiveColor{Light: "#5C6770", Dark: "#9CA3AF"}
-	neutralPlaceholder := lipgloss.AdaptiveColor{Light: "#64748B", Dark: "#94A3B8"}
+	neutralText := lipgloss.AdaptiveColor{Light: "#334155", Dark: "#E2E8F0"}
+	neutralMuted := lipgloss.AdaptiveColor{Light: "#64748B", Dark: "#A5B4CF"}
+	neutralPlaceholder := lipgloss.AdaptiveColor{Light: "#94A3B8", Dark: "#8EA2C0"}
+
+	accentLavender := lipgloss.AdaptiveColor{Light: "#9B8FC9", Dark: "#C5B7F2"}
+	accentTeal := lipgloss.AdaptiveColor{Light: "#6FAFAE", Dark: "#8ED8D4"}
+	accentPeach := lipgloss.AdaptiveColor{Light: "#D6A382", Dark: "#F2C6AD"}
+	accentMint := lipgloss.AdaptiveColor{Light: "#72B79A", Dark: "#9FDABE"}
+	selectedBg := lipgloss.AdaptiveColor{Light: "#C6DEF3", Dark: "#8BB4D8"}
+	selectedFg := lipgloss.AdaptiveColor{Light: "#1E293B", Dark: "#0F172A"}
+	confirmText := lipgloss.AdaptiveColor{Light: "#7A4F34", Dark: "#F3DDCA"}
 
 	return browserStyles{
 		app: lipgloss.NewStyle().
 			Padding(1, 2).
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("#0B7285")),
-		title:         lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#0B7285")),
+			BorderForeground(accentLavender),
+		title:         lipgloss.NewStyle().Bold(true).Foreground(accentTeal),
 		subtitle:      lipgloss.NewStyle().Foreground(neutralMuted),
-		searchLabel:   lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#E67700")),
-		searchPrompt:  lipgloss.NewStyle().Foreground(lipgloss.Color("#0B7285")).Bold(true),
+		searchLabel:   lipgloss.NewStyle().Bold(true).Foreground(accentPeach),
+		searchPrompt:  lipgloss.NewStyle().Foreground(accentLavender).Bold(true),
 		query:         lipgloss.NewStyle().Bold(true).Foreground(neutralText),
 		placeholder:   lipgloss.NewStyle().Foreground(neutralPlaceholder),
 		project:       lipgloss.NewStyle().Foreground(neutralText),
-		projectActive: lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#F8F9FA")).Background(lipgloss.Color("#0B7285")).Padding(0, 1),
+		projectActive: lipgloss.NewStyle().Bold(true).Foreground(selectedFg).Background(selectedBg).Padding(0, 1),
 		empty:         lipgloss.NewStyle().Foreground(neutralMuted),
 		detail:        lipgloss.NewStyle().Foreground(neutralMuted),
 		help:          lipgloss.NewStyle().Foreground(neutralMuted),
-		status:        lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#0F766E")),
+		status:        lipgloss.NewStyle().Bold(true).Foreground(accentMint),
 		confirm: lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("#E67700")).
+			BorderForeground(accentPeach).
 			Padding(0, 1).
-			Foreground(lipgloss.Color("#7C2D12")),
+			Foreground(confirmText),
 	}
 }
 
