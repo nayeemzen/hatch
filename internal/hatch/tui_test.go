@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -21,6 +22,10 @@ func TestFuzzyScore(t *testing.T) {
 
 	if got := fuzzyScore("hatch", "zzz"); got != -1 {
 		t.Fatalf("expected missing query score -1, got %d", got)
+	}
+
+	if got := fuzzyScore("2026-03-01-spike-auth", "spike auth"); got < 0 {
+		t.Fatalf("expected space-separated query to match, got %d", got)
 	}
 }
 
@@ -98,5 +103,79 @@ func TestRunBrowserSelectsProject(t *testing.T) {
 	}
 	if !strings.Contains(output.String(), "\x1b[?25l") {
 		t.Fatalf("expected terminal control output, got %q", output.String())
+	}
+}
+
+func TestBrowserSpaceKeyAppendsToFilter(t *testing.T) {
+	t.Parallel()
+
+	model := newBrowserModel("/tmp", nil)
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("hello")})
+	model = updated.(browserModel)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeySpace})
+	model = updated.(browserModel)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("world")})
+	model = updated.(browserModel)
+
+	if model.query != "hello world" {
+		t.Fatalf("expected query with space, got %q", model.query)
+	}
+}
+
+func TestBrowserCreateNewOptionAndSelect(t *testing.T) {
+	t.Parallel()
+
+	root := filepath.Join(t.TempDir(), "hatchery")
+	fixedNow := func() time.Time {
+		return time.Date(2026, time.March, 1, 12, 0, 0, 0, time.UTC)
+	}
+
+	model := newBrowserModelWithClock(root, nil, fixedNow)
+	model.query = "new project"
+	model.refreshFilter()
+
+	view := model.View()
+	if !strings.Contains(view, "Create New: new project") {
+		t.Fatalf("expected create option in view, got:\n%s", view)
+	}
+	if !model.isCreateRow(model.cursor) {
+		t.Fatalf("expected create option to be selected when no projects, cursor=%d", model.cursor)
+	}
+
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(browserModel)
+
+	want := filepath.Join(root, "2026-03-01-new-project")
+	if model.selectedPath != want {
+		t.Fatalf("selected path = %q, want %q", model.selectedPath, want)
+	}
+	if _, err := os.Stat(want); err != nil {
+		t.Fatalf("expected created project at %q: %v", want, err)
+	}
+}
+
+func TestBrowserEnterOpensMatchBeforeCreateOption(t *testing.T) {
+	t.Parallel()
+
+	root := filepath.Join(t.TempDir(), "hatchery")
+	beta := filepath.Join(root, "2026-02-28-beta")
+	if err := os.MkdirAll(beta, 0o755); err != nil {
+		t.Fatalf("create beta: %v", err)
+	}
+
+	model := newBrowserModel(root, []Project{{Name: "2026-02-28-beta", Path: beta}})
+	model.query = "beta"
+	model.refreshFilter()
+	if model.cursor != 0 {
+		t.Fatalf("expected cursor to remain on first project, got %d", model.cursor)
+	}
+	if model.isCreateRow(model.cursor) {
+		t.Fatalf("expected first row to be project, got create row")
+	}
+
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(browserModel)
+	if model.selectedPath != beta {
+		t.Fatalf("selected path = %q, want %q", model.selectedPath, beta)
 	}
 }

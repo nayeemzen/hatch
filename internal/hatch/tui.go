@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -81,6 +82,7 @@ type browserModel struct {
 	filtered     []int
 	cursor       int
 	query        string
+	createInput  string
 	width        int
 	height       int
 	status       string
@@ -89,16 +91,22 @@ type browserModel struct {
 	err          error
 	quitting     bool
 	styles       browserStyles
+	now          func() time.Time
 }
 
 func newBrowserModel(root string, projects []Project) browserModel {
+	return newBrowserModelWithClock(root, projects, time.Now)
+}
+
+func newBrowserModelWithClock(root string, projects []Project, now func() time.Time) browserModel {
 	m := browserModel{
 		root:     root,
 		projects: projects,
 		width:    100,
 		height:   28,
 		styles:   defaultBrowserStyles(),
-		status:   "Use arrows to move, Enter to open",
+		status:   "Use arrows to move, Enter to open/create",
+		now:      now,
 	}
 	m.refreshFilter()
 	return m
@@ -135,11 +143,14 @@ func (m browserModel) updateMain(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case tea.KeyDown:
-		if m.cursor < len(m.filtered)-1 {
+		if m.cursor < m.rowCount()-1 {
 			m.cursor++
 		}
 		return m, nil
 	case tea.KeyEnter:
+		if m.isCreateRow(m.cursor) {
+			return m.createFromQuery()
+		}
 		selected := m.currentProject()
 		if selected == nil {
 			m.status = "No matching project"
@@ -165,6 +176,10 @@ func (m browserModel) updateMain(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.refreshFilter()
 		}
 		return m, nil
+	case tea.KeySpace:
+		m.query += " "
+		m.refreshFilter()
+		return m, nil
 	case tea.KeyRunes:
 		m.query += string(msg.Runes)
 		m.refreshFilter()
@@ -176,7 +191,7 @@ func (m browserModel) updateMain(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.cursor--
 			}
 		case "j":
-			if m.cursor < len(m.filtered)-1 {
+			if m.cursor < m.rowCount()-1 {
 				m.cursor++
 			}
 		}
@@ -245,6 +260,7 @@ func (m browserModel) applyConfirm() (tea.Model, tea.Cmd) {
 
 func (m *browserModel) refreshFilter() {
 	query := strings.TrimSpace(strings.ToLower(m.query))
+	m.createInput = strings.TrimSpace(m.query)
 	scored := make([]scoredIndex, 0, len(m.projects))
 	for i, project := range m.projects {
 		score := fuzzyScore(project.Name, query)
@@ -266,13 +282,13 @@ func (m *browserModel) refreshFilter() {
 		m.filtered = append(m.filtered, item.index)
 	}
 
-	if m.cursor >= len(m.filtered) {
-		m.cursor = max(0, len(m.filtered)-1)
+	if m.cursor >= m.rowCount() {
+		m.cursor = max(0, m.rowCount()-1)
 	}
 }
 
 func (m browserModel) currentProject() *Project {
-	if len(m.filtered) == 0 || m.cursor < 0 || m.cursor >= len(m.filtered) {
+	if len(m.filtered) == 0 || m.cursor < 0 || m.cursor >= len(m.filtered) || m.isCreateRow(m.cursor) {
 		return nil
 	}
 	item := m.projects[m.filtered[m.cursor]]
@@ -296,11 +312,17 @@ func (m browserModel) View() string {
 
 	rows := m.renderRows()
 	selectedInfo := ""
-	if selected := m.currentProject(); selected != nil {
+	if m.isCreateRow(m.cursor) {
+		if dirName, err := projectDirName(m.createInput, m.currentTime()); err == nil {
+			selectedInfo = m.styles.detail.Render(filepath.Join(m.root, dirName))
+		} else {
+			selectedInfo = m.styles.detail.Render("Invalid project name")
+		}
+	} else if selected := m.currentProject(); selected != nil {
 		selectedInfo = m.styles.detail.Render(selected.Path)
 	}
 
-	help := m.styles.help.Render("↑/↓ move  •  type to filter  •  Enter open  •  Ctrl+A archive  •  Ctrl+R remove  •  Esc quit")
+	help := m.styles.help.Render("↑/↓ move  •  type to filter  •  Enter open/create  •  Ctrl+A archive  •  Ctrl+R remove  •  Esc quit")
 	status := m.styles.status.Render(m.status)
 
 	body := []string{
@@ -330,7 +352,8 @@ func (m browserModel) View() string {
 }
 
 func (m browserModel) renderRows() string {
-	if len(m.filtered) == 0 {
+	totalRows := m.rowCount()
+	if totalRows == 0 {
 		if strings.TrimSpace(m.query) == "" {
 			return m.styles.empty.Render("No projects yet. Run: hatch <name>")
 		}
@@ -338,21 +361,32 @@ func (m browserModel) renderRows() string {
 	}
 
 	maxRows := max(8, m.height-14)
-	if maxRows > len(m.filtered) {
-		maxRows = len(m.filtered)
+	if maxRows > totalRows {
+		maxRows = totalRows
 	}
 
 	start := 0
 	if m.cursor >= maxRows {
 		start = m.cursor - maxRows + 1
 	}
-	end := min(start+maxRows, len(m.filtered))
+	end := min(start+maxRows, totalRows)
 
 	lines := make([]string, 0, end-start)
-	for i := start; i < end; i++ {
-		project := m.projects[m.filtered[i]]
+	for row := start; row < end; row++ {
+		if m.isCreateRow(row) {
+			label := fmt.Sprintf("  📁 Create New: %s", m.createInput)
+			if row == m.cursor {
+				label = m.styles.projectActive.Render("▸ 📁 Create New: " + m.createInput)
+			} else {
+				label = m.styles.project.Render(label)
+			}
+			lines = append(lines, label)
+			continue
+		}
+
+		project := m.projects[m.filtered[row]]
 		line := fmt.Sprintf("  %s", project.Name)
-		if i == m.cursor {
+		if row == m.cursor {
 			line = m.styles.projectActive.Render("▸ " + project.Name)
 		} else {
 			line = m.styles.project.Render(line)
@@ -360,6 +394,47 @@ func (m browserModel) renderRows() string {
 		lines = append(lines, line)
 	}
 	return strings.Join(lines, "\n")
+}
+
+func (m browserModel) rowCount() int {
+	rows := len(m.filtered)
+	if m.hasCreateOption() {
+		rows++
+	}
+	return rows
+}
+
+func (m browserModel) hasCreateOption() bool {
+	return strings.TrimSpace(m.createInput) != ""
+}
+
+func (m browserModel) isCreateRow(row int) bool {
+	return m.hasCreateOption() && row == len(m.filtered)
+}
+
+func (m browserModel) currentTime() time.Time {
+	if m.now != nil {
+		return m.now()
+	}
+	return time.Now()
+}
+
+func (m browserModel) createFromQuery() (tea.Model, tea.Cmd) {
+	name := strings.TrimSpace(m.createInput)
+	if name == "" {
+		m.status = "Type a project name to create"
+		return m, nil
+	}
+
+	projectPath, err := createProject(m.root, name, m.currentTime())
+	if err != nil {
+		m.status = fmt.Sprintf("Create failed: %v", err)
+		return m, nil
+	}
+
+	m.selectedPath = projectPath
+	m.quitting = true
+	return m, tea.Quit
 }
 
 func (m browserModel) confirmPrompt() string {
@@ -402,6 +477,7 @@ func runBrowser(root string, in io.Reader, out io.Writer) (string, error) {
 }
 
 func fuzzyScore(candidate, query string) int {
+	query = strings.Join(strings.Fields(query), "")
 	if query == "" {
 		return 0
 	}
