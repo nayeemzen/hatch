@@ -1,5 +1,5 @@
 # hatch
-
+<img width="1878" height="1428" alt="CleanShot 2026-03-01 at 11 12 07@2x" src="https://github.com/user-attachments/assets/b9909fdf-c241-4410-855f-bc0caacd642d" />
 `hatch` is a small Go CLI for creating, cloning, and browsing throwaway projects in `~/hatchery`.
 
 ## Why this exists
@@ -14,11 +14,6 @@
 - Browser actions: arrow keys to move, `Enter` to open/create, `Ctrl+A` to archive, `Ctrl+R` to remove
 - Shell hook for auto-`cd`
 
-## Screenshots
-
-![Create and copy projects](assets/media/screenshots/hatch-create-copy.png)
-![Interactive browser](assets/media/screenshots/hatch-browser.png)
-![CLI help](assets/media/screenshots/hatch-help.png)
 
 ## Install
 
