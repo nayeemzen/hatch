@@ -149,3 +149,87 @@ func TestArchiveProjectCollision(t *testing.T) {
 		t.Fatalf("archived directory should exist: %v", err)
 	}
 }
+
+func TestIsGitURL(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		input string
+		want  bool
+	}{
+		{input: "https://github.com/nayeemzen/hatch.git", want: true},
+		{input: "ssh://git@github.com/nayeemzen/hatch.git", want: true},
+		{input: "git@github.com:nayeemzen/hatch.git", want: true},
+		{input: "/tmp/local-folder", want: false},
+		{input: "project-name", want: false},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.input, func(t *testing.T) {
+			t.Parallel()
+			if got := isGitURL(tc.input); got != tc.want {
+				t.Fatalf("isGitURL(%q) = %v, want %v", tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestRepoNameFromGitURL(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		url  string
+		want string
+	}{
+		{url: "https://github.com/nayeemzen/hatch.git", want: "hatch"},
+		{url: "ssh://git@github.com/nayeemzen/hatch.git", want: "hatch"},
+		{url: "git@github.com:nayeemzen/hatch.git", want: "hatch"},
+		{url: "https://github.com/nayeemzen/hello-world", want: "hello-world"},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.url, func(t *testing.T) {
+			t.Parallel()
+			got, err := repoNameFromGitURL(tc.url)
+			if err != nil {
+				t.Fatalf("repoNameFromGitURL returned error: %v", err)
+			}
+			if got != tc.want {
+				t.Fatalf("repoNameFromGitURL(%q) = %q, want %q", tc.url, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCloneProject(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "hatchery")
+
+	originalClone := gitCloneFn
+	gitCloneFn = func(repoURL, target string) ([]byte, error) {
+		if repoURL != "https://github.com/nayeemzen/hatch.git" {
+			t.Fatalf("git clone URL = %q", repoURL)
+		}
+		if err := os.MkdirAll(target, 0o755); err != nil {
+			t.Fatalf("create clone target: %v", err)
+		}
+		return []byte("cloned"), nil
+	}
+	t.Cleanup(func() {
+		gitCloneFn = originalClone
+	})
+
+	got, err := cloneProject(root, "https://github.com/nayeemzen/hatch.git", fixedNow())
+	if err != nil {
+		t.Fatalf("cloneProject returned error: %v", err)
+	}
+
+	want := filepath.Join(root, "2026-02-28-hatch")
+	if got != want {
+		t.Fatalf("cloneProject path = %q, want %q", got, want)
+	}
+	if _, err := os.Stat(want); err != nil {
+		t.Fatalf("expected clone target directory: %v", err)
+	}
+}

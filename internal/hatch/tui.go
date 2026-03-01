@@ -29,6 +29,8 @@ type scoredIndex struct {
 	score int
 }
 
+const noMatchScore = -1 << 30
+
 type browserStyles struct {
 	app           lipgloss.Style
 	title         lipgloss.Style
@@ -264,7 +266,7 @@ func (m *browserModel) refreshFilter() {
 	scored := make([]scoredIndex, 0, len(m.projects))
 	for i, project := range m.projects {
 		score := fuzzyScore(project.Name, query)
-		if score < 0 {
+		if score == noMatchScore {
 			continue
 		}
 		scored = append(scored, scoredIndex{index: i, score: score})
@@ -485,7 +487,7 @@ func fuzzyScore(candidate, query string) int {
 	candidateRunes := []rune(strings.ToLower(candidate))
 	queryRunes := []rune(strings.ToLower(query))
 	if len(queryRunes) > len(candidateRunes) {
-		return -1
+		return noMatchScore
 	}
 
 	score := 0
@@ -511,7 +513,7 @@ func fuzzyScore(candidate, query string) int {
 			cursor++
 		}
 		if !found {
-			return -1
+			return noMatchScore
 		}
 	}
 

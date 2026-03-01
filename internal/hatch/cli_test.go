@@ -67,6 +67,40 @@ func TestRunCopy(t *testing.T) {
 	}
 }
 
+func TestRunCloneFromGitURL(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "hatchery")
+	t.Setenv("HATCHERY_HOME", root)
+
+	wantPath := filepath.Join(root, "2026-02-28-hatch")
+	originalClone := cloneProjectFn
+	cloneProjectFn = func(gotRoot, repoURL string, now time.Time) (string, error) {
+		if gotRoot != root {
+			t.Fatalf("clone root = %q, want %q", gotRoot, root)
+		}
+		if repoURL != "https://github.com/nayeemzen/hatch.git" {
+			t.Fatalf("clone URL = %q", repoURL)
+		}
+		if now.Format("2006-01-02") != "2026-02-28" {
+			t.Fatalf("unexpected now: %s", now.Format(time.RFC3339))
+		}
+		return wantPath, nil
+	}
+	t.Cleanup(func() {
+		cloneProjectFn = originalClone
+	})
+
+	out := new(bytes.Buffer)
+	errOut := new(bytes.Buffer)
+
+	err := run([]string{"https://github.com/nayeemzen/hatch.git"}, strings.NewReader(""), out, errOut, fixedNow)
+	if err != nil {
+		t.Fatalf("run clone returned error: %v", err)
+	}
+	if !strings.Contains(out.String(), "Cloned into: "+wantPath) {
+		t.Fatalf("expected clone output, got %q", out.String())
+	}
+}
+
 func TestRunBrowseWritesSelection(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "hatchery")
 	t.Setenv("HATCHERY_HOME", root)
@@ -106,5 +140,8 @@ func TestHelpOutput(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "Shell integration") {
 		t.Fatalf("help output missing expected content: %q", out.String())
+	}
+	if !strings.Contains(out.String(), "hatch <git-url>") {
+		t.Fatalf("help output missing git url usage: %q", out.String())
 	}
 }

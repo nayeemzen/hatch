@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -14,10 +16,14 @@ import (
 )
 
 var (
-	errInvalidName = errors.New("project name must contain at least one valid character")
+	errInvalidName   = errors.New("project name must contain at least one valid character")
+	errInvalidGitURL = errors.New("git URL must use ssh or https")
 )
 
 var invalidNameChars = regexp.MustCompile(`[^a-zA-Z0-9._-]+`)
+var gitSCPURLPattern = regexp.MustCompile(`^[^@\s]+@[^:\s]+:.+`)
+
+var gitCloneFn = runGitClone
 
 type Project struct {
 	Name string
@@ -139,6 +145,108 @@ func copyProject(root, source, name string, now time.Time) (string, error) {
 	}
 
 	return target, nil
+}
+
+func isGitURL(raw string) bool {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return false
+	}
+
+	if gitSCPURLPattern.MatchString(value) {
+		return true
+	}
+
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Host == "" {
+		return false
+	}
+
+	switch strings.ToLower(parsed.Scheme) {
+	case "https", "ssh":
+		return true
+	default:
+		return false
+	}
+}
+
+func repoNameFromGitURL(raw string) (string, error) {
+	value := strings.TrimSpace(raw)
+	if !isGitURL(value) {
+		return "", errInvalidGitURL
+	}
+
+	var repoPath string
+	if gitSCPURLPattern.MatchString(value) {
+		parts := strings.SplitN(value, ":", 2)
+		if len(parts) != 2 {
+			return "", errInvalidGitURL
+		}
+		repoPath = parts[1]
+	} else {
+		parsed, err := url.Parse(value)
+		if err != nil {
+			return "", errInvalidGitURL
+		}
+		repoPath = parsed.Path
+	}
+
+	repoPath = strings.Trim(strings.TrimSpace(repoPath), "/")
+	if repoPath == "" {
+		return "", errInvalidGitURL
+	}
+
+	name := filepath.Base(repoPath)
+	name = strings.TrimSuffix(name, ".git")
+	if name == "" || name == "." {
+		return "", errInvalidGitURL
+	}
+
+	normalized, err := normalizeName(name)
+	if err != nil {
+		return "", errInvalidGitURL
+	}
+	return normalized, nil
+}
+
+func cloneProject(root, repoURL string, now time.Time) (string, error) {
+	repoName, err := repoNameFromGitURL(repoURL)
+	if err != nil {
+		return "", err
+	}
+
+	dirName, err := projectDirName(repoName, now)
+	if err != nil {
+		return "", err
+	}
+
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		return "", fmt.Errorf("create hatchery root: %w", err)
+	}
+
+	target := filepath.Join(root, dirName)
+	if _, err := os.Stat(target); err == nil {
+		return "", fmt.Errorf("project already exists: %s", target)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", fmt.Errorf("check project directory: %w", err)
+	}
+
+	output, err := gitCloneFn(repoURL, target)
+	if err != nil {
+		_ = os.RemoveAll(target)
+		msg := strings.TrimSpace(string(output))
+		if msg != "" {
+			return "", fmt.Errorf("clone repository: %s", msg)
+		}
+		return "", fmt.Errorf("clone repository: %w", err)
+	}
+
+	return target, nil
+}
+
+func runGitClone(repoURL, target string) ([]byte, error) {
+	cmd := exec.Command("git", "clone", "--", repoURL, target)
+	return cmd.CombinedOutput()
 }
 
 func copyDir(source, target string) error {

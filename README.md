@@ -10,6 +10,7 @@
 ## Features
 
 - `hatch <name>`: create `~/hatchery/<yyyy-mm-dd>-<name>`
+- `hatch <git-url>`: clone an ssh/https repo into `~/hatchery/<yyyy-mm-dd>-<repo-name>`
 - `hatch <path> <name>`: copy a source directory into `~/hatchery/<yyyy-mm-dd>-<name>`
 - `hatch`: interactive browser with live fuzzy filtering
 - Browser actions: arrow keys to move, `Enter` to open/create, `Ctrl+A` to archive, `Ctrl+R` to remove
@@ -75,10 +76,21 @@ hatch --init fish | source
 hatch --help
 ```
 
+Patterns:
+
+```bash
+hatch <name>
+hatch <git-url>
+hatch <path> <name>
+hatch
+```
+
 Examples:
 
 ```bash
 hatch spike-auth
+hatch git@github.com:nayeemzen/hatch.git
+hatch https://github.com/nayeemzen/hatch.git
 hatch ~/templates/service-base payment-service
 hatch
 ```

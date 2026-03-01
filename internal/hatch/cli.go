@@ -14,6 +14,7 @@ import (
 )
 
 var version = "0.1.0"
+var cloneProjectFn = cloneProject
 
 type cliOptions struct {
 	cwdFile string
@@ -73,14 +74,24 @@ func run(args []string, in io.Reader, out, errOut io.Writer, now func() time.Tim
 		fmt.Fprintln(out, successStyle().Render("Opened: "+selected))
 		return nil
 	case 1:
-		projectPath, err := createProject(root, remaining[0], now())
+		var (
+			projectPath string
+			action      string
+		)
+		if isGitURL(remaining[0]) {
+			projectPath, err = cloneProjectFn(root, remaining[0], now())
+			action = "Cloned into: "
+		} else {
+			projectPath, err = createProject(root, remaining[0], now())
+			action = "Created: "
+		}
 		if err != nil {
 			return err
 		}
 		if err := writeCWD(options.cwdFile, projectPath); err != nil {
 			return err
 		}
-		fmt.Fprintln(out, successStyle().Render("Created: "+projectPath))
+		fmt.Fprintln(out, successStyle().Render(action+projectPath))
 		return nil
 	case 2:
 		projectPath, err := copyProject(root, remaining[0], remaining[1], now())
@@ -126,6 +137,9 @@ func usage() string {
 		"  hatch <name>",
 		"      Create ~/hatchery/<yyyy-mm-dd>-<name> and enter it.",
 		"",
+		"  hatch <git-url>",
+		"      Clone ssh/https git URL into ~/hatchery/<yyyy-mm-dd>-<repo-name> and enter it.",
+		"",
 		"  hatch <path> <name>",
 		"      Copy <path> into ~/hatchery/<yyyy-mm-dd>-<name> and enter it.",
 		"",
@@ -133,7 +147,7 @@ func usage() string {
 		"      Open the interactive browser with live fuzzy filtering.",
 		"",
 		"Actions in browser:",
-		"  Enter     Open selected project",
+		"  Enter     Open selected project or create from input",
 		"  Ctrl+A    Archive selected project to ~/hatchery/archive",
 		"  Ctrl+R    Remove selected project",
 		"  Esc       Exit without selecting",

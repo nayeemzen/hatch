@@ -20,8 +20,8 @@ func TestFuzzyScore(t *testing.T) {
 		t.Fatalf("expected contiguous match score (%d) to be greater than scattered (%d)", contiguous, scattered)
 	}
 
-	if got := fuzzyScore("hatch", "zzz"); got != -1 {
-		t.Fatalf("expected missing query score -1, got %d", got)
+	if got := fuzzyScore("hatch", "zzz"); got != noMatchScore {
+		t.Fatalf("expected missing query score %d, got %d", noMatchScore, got)
 	}
 
 	if got := fuzzyScore("2026-03-01-spike-auth", "spike auth"); got < 0 {
@@ -45,6 +45,22 @@ func TestBrowserViewContainsPolishedCopy(t *testing.T) {
 		if !strings.Contains(view, snippet) {
 			t.Fatalf("view should contain %q, got:\n%s", snippet, view)
 		}
+	}
+}
+
+func TestBrowserFilterIncludesNonPrefixMatch(t *testing.T) {
+	t.Parallel()
+
+	project := Project{
+		Name: "2026-03-01-alpha-super-long-project-name",
+		Path: "/tmp/2026-03-01-alpha-super-long-project-name",
+	}
+	model := newBrowserModel("/tmp", []Project{project})
+	model.query = "project"
+	model.refreshFilter()
+
+	if len(model.filtered) != 1 {
+		t.Fatalf("expected non-prefix fuzzy match to remain visible, filtered=%v", model.filtered)
 	}
 }
 
