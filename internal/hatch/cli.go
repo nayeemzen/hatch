@@ -184,32 +184,32 @@ func usageCard() string {
 
 	headline := lipgloss.JoinHorizontal(lipgloss.Top, title, "  ", subtitle)
 
-	sectionTitle := lipgloss.NewStyle().Bold(true).Foreground(accentPeach)
 	command := lipgloss.NewStyle().Bold(true).Foreground(accentLavender)
 	body := lipgloss.NewStyle().Foreground(neutralText)
 	note := lipgloss.NewStyle().Foreground(accentMint)
+	spacer := lipgloss.NewStyle().Foreground(accentPeach).Render(" ")
 
 	sections := []string{
 		headline,
 		"",
-		sectionTitle.Render("Create"),
+		spacer,
 		body.Render("  " + command.Render("hatch <name>")),
 		body.Render("    Create a dated project in ~/hatchery and enter it."),
 		"",
-		sectionTitle.Render("Clone"),
+		spacer,
 		body.Render("  " + command.Render("hatch <git-url>")),
 		body.Render("    Clone ssh/https URL into ~/hatchery/<yyyy-mm-dd>-<repo-name>."),
 		"",
-		sectionTitle.Render("Copy Template"),
+		spacer,
 		body.Render("  " + command.Render("hatch <path> <name>")),
 		body.Render("    Copy a local directory into a dated project."),
 		"",
-		sectionTitle.Render("Browser"),
+		spacer,
 		body.Render("  " + command.Render("hatch")),
 		body.Render("    Type to fuzzy filter, Enter to open/create."),
 		body.Render("    Ctrl+A archive  •  Ctrl+R remove  •  Esc quit"),
 		"",
-		sectionTitle.Render("Shell Hook"),
+		spacer,
 		body.Render("  " + command.Render(`eval "$(hatch --init zsh)"`)),
 		"",
 		note.Render("Tip: run hatch --help for full plain-text flags."),
