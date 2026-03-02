@@ -52,6 +52,9 @@ type browserStyles struct {
 	help          lipgloss.Style
 	status        lipgloss.Style
 	confirm       lipgloss.Style
+	confirmMsg    lipgloss.Style
+	confirmInput  lipgloss.Style
+	confirmAction lipgloss.Style
 }
 
 func defaultBrowserStyles() browserStyles {
@@ -66,6 +69,7 @@ func defaultBrowserStyles() browserStyles {
 	selectedBg := lipgloss.AdaptiveColor{Light: "#C6DEF3", Dark: "#8BB4D8"}
 	selectedFg := lipgloss.AdaptiveColor{Light: "#1E293B", Dark: "#0F172A"}
 	confirmText := lipgloss.AdaptiveColor{Light: "#7A4F34", Dark: "#F3DDCA"}
+	confirmInput := lipgloss.AdaptiveColor{Light: "#136F63", Dark: "#98E8DE"}
 
 	return browserStyles{
 		app: lipgloss.NewStyle().
@@ -87,8 +91,10 @@ func defaultBrowserStyles() browserStyles {
 		confirm: lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(accentPeach).
-			Padding(0, 1).
-			Foreground(confirmText),
+			Padding(0, 1),
+		confirmMsg:    lipgloss.NewStyle().Foreground(confirmText),
+		confirmInput:  lipgloss.NewStyle().Bold(true).Foreground(confirmInput),
+		confirmAction: lipgloss.NewStyle().Foreground(confirmText),
 	}
 }
 
@@ -419,6 +425,10 @@ func (m browserModel) View() string {
 		query = m.styles.query.Render(m.query)
 	}
 	searchLine := lipgloss.JoinHorizontal(lipgloss.Left, m.styles.searchPrompt.Render("› "), query)
+	appWidth := 0
+	if m.width > 0 {
+		appWidth = max(80, min(m.width-2, 120))
+	}
 
 	rows := m.renderRows()
 	selectedInfo := ""
@@ -451,12 +461,12 @@ func (m browserModel) View() string {
 	body = append(body, "", status, help)
 
 	if m.action != actionNone {
-		body = append(body, "", m.actionPrompt())
+		body = append(body, "", m.actionPrompt(appWidth))
 	}
 
 	content := strings.Join(body, "\n")
-	if m.width > 0 {
-		return m.styles.app.Width(max(80, min(m.width-2, 120))).Render(content)
+	if appWidth > 0 {
+		return m.styles.app.Width(appWidth).Render(content)
 	}
 	return m.styles.app.Render(content)
 }
@@ -547,29 +557,37 @@ func (m browserModel) createFromQuery() (tea.Model, tea.Cmd) {
 	return m, tea.Quit
 }
 
-func (m browserModel) actionPrompt() string {
+func (m browserModel) actionPrompt(appWidth int) string {
 	selected := m.currentProject()
 	if selected == nil {
 		return ""
 	}
+	boxStyle := m.styles.confirm
+	if appWidth > 0 {
+		// Fill the content width inside the outer app container.
+		boxStyle = boxStyle.Width(max(24, appWidth-4))
+	}
 
 	switch m.action {
 	case actionDeleteConfirm:
-		copy := fmt.Sprintf("Delete %s?  [y/Enter] confirm  [n/Esc] cancel", selected.Name)
-		return m.styles.confirm.Render(copy)
+		msg := m.styles.confirmMsg.Render(fmt.Sprintf("Delete %s?", selected.Name))
+		actions := m.styles.confirmAction.Render("[y/Enter] confirm  [n/Esc] cancel")
+		return boxStyle.Render(strings.Join([]string{msg, "", actions}, "\n"))
 	case actionRenameInput:
-		copy := fmt.Sprintf("Rename %s as: %s  [Enter] apply  [Esc] cancel", selected.Name, m.promptInput)
-		return m.styles.confirm.Render(copy)
+		msg := m.styles.confirmMsg.Render(fmt.Sprintf("Rename %s (type to edit)", selected.Name))
+		input := m.styles.confirmInput.Render("› " + m.promptInput)
+		actions := m.styles.confirmAction.Render("[Enter] apply  [Esc] cancel")
+		return boxStyle.Render(strings.Join([]string{msg, input, "", actions}, "\n"))
 	case actionDuplicateInput:
-		copy := fmt.Sprintf("Duplicate %s as: %s  [Enter] apply  [Esc] cancel", selected.Name, m.promptInput)
-		return m.styles.confirm.Render(copy)
+		msg := m.styles.confirmMsg.Render(fmt.Sprintf("Duplicate %s (type to edit)", selected.Name))
+		input := m.styles.confirmInput.Render("› " + m.promptInput)
+		actions := m.styles.confirmAction.Render("[Enter] apply  [Esc] cancel")
+		return boxStyle.Render(strings.Join([]string{msg, input, "", actions}, "\n"))
 	case actionWorktreeInput:
-		copy := fmt.Sprintf(
-			"Git worktree from %s (type to edit)\n› %s\n[Enter] apply  [Esc] cancel",
-			selected.Name,
-			m.promptInput,
-		)
-		return m.styles.confirm.Render(copy)
+		msg := m.styles.confirmMsg.Render(fmt.Sprintf("Git worktree from %s (type to edit)", selected.Name))
+		input := m.styles.confirmInput.Render("› " + m.promptInput)
+		actions := m.styles.confirmAction.Render("[Enter] apply  [Esc] cancel")
+		return boxStyle.Render(strings.Join([]string{msg, input, "", actions}, "\n"))
 	default:
 		return ""
 	}

@@ -203,7 +203,7 @@ func TestBrowserWorktreeAction(t *testing.T) {
 	if model.action != actionWorktreeInput {
 		t.Fatalf("expected actionWorktreeInput, got %v", model.action)
 	}
-	prompt := model.actionPrompt()
+	prompt := model.actionPrompt(90)
 	if !strings.Contains(prompt, "(type to edit)") {
 		t.Fatalf("worktree prompt should include edit hint, got %q", prompt)
 	}
