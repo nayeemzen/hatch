@@ -564,8 +564,10 @@ func (m browserModel) actionPrompt(appWidth int) string {
 	}
 	boxStyle := m.styles.confirm
 	if appWidth > 0 {
-		// Fill the content width inside the outer app container.
-		boxStyle = boxStyle.Width(max(24, appWidth-4))
+		// Fit the prompt box exactly inside the app content area:
+		// app width - app frame (border + padding) - prompt frame.
+		contentWidth := appWidth - m.styles.app.GetHorizontalFrameSize() - boxStyle.GetHorizontalFrameSize()
+		boxStyle = boxStyle.Width(max(24, contentWidth))
 	}
 
 	switch m.action {
