@@ -1,6 +1,7 @@
 package hatch
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -231,5 +232,119 @@ func TestCloneProject(t *testing.T) {
 	}
 	if _, err := os.Stat(want); err != nil {
 		t.Fatalf("expected clone target directory: %v", err)
+	}
+}
+
+func TestWorktreeProject(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "hatchery")
+	source := filepath.Join(t.TempDir(), "repo")
+	if err := os.MkdirAll(source, 0o755); err != nil {
+		t.Fatalf("create source dir: %v", err)
+	}
+
+	originalRepoRoot := gitRepoRootFn
+	originalBranchExists := gitBranchExistsFn
+	originalWorktreeAdd := gitWorktreeAddFn
+
+	gitRepoRootFn = func(path string) (string, error) {
+		if path != source {
+			t.Fatalf("repo root path = %q, want %q", path, source)
+		}
+		return source, nil
+	}
+	gitBranchExistsFn = func(repoRoot, branch string) (bool, error) {
+		if repoRoot != source {
+			t.Fatalf("branch check repo = %q, want %q", repoRoot, source)
+		}
+		if branch != "2026-02-28-feature" {
+			t.Fatalf("branch = %q", branch)
+		}
+		return false, nil
+	}
+	gitWorktreeAddFn = func(repoRoot, target, branch string) ([]byte, error) {
+		if repoRoot != source {
+			t.Fatalf("worktree repo = %q, want %q", repoRoot, source)
+		}
+		if branch != "2026-02-28-feature" {
+			t.Fatalf("worktree branch = %q", branch)
+		}
+		if err := os.MkdirAll(target, 0o755); err != nil {
+			t.Fatalf("create target: %v", err)
+		}
+		return []byte("ok"), nil
+	}
+	t.Cleanup(func() {
+		gitRepoRootFn = originalRepoRoot
+		gitBranchExistsFn = originalBranchExists
+		gitWorktreeAddFn = originalWorktreeAdd
+	})
+
+	got, err := worktreeProject(root, source, "Feature", fixedNow())
+	if err != nil {
+		t.Fatalf("worktreeProject returned error: %v", err)
+	}
+
+	want := filepath.Join(root, "2026-02-28-feature")
+	if got != want {
+		t.Fatalf("worktreeProject path = %q, want %q", got, want)
+	}
+	if _, err := os.Stat(want); err != nil {
+		t.Fatalf("expected worktree target directory: %v", err)
+	}
+}
+
+func TestWorktreeProjectBranchCollision(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "hatchery")
+	source := filepath.Join(t.TempDir(), "repo")
+	if err := os.MkdirAll(source, 0o755); err != nil {
+		t.Fatalf("create source dir: %v", err)
+	}
+
+	originalRepoRoot := gitRepoRootFn
+	originalBranchExists := gitBranchExistsFn
+	originalWorktreeAdd := gitWorktreeAddFn
+
+	gitRepoRootFn = func(string) (string, error) { return source, nil }
+	gitBranchExistsFn = func(_ string, branch string) (bool, error) {
+		return branch == "2026-02-28-feature", nil
+	}
+	gitWorktreeAddFn = func(_ string, target, branch string) ([]byte, error) {
+		if branch != "2026-02-28-feature-2" {
+			t.Fatalf("expected branch suffix on collision, got %q", branch)
+		}
+		if err := os.MkdirAll(target, 0o755); err != nil {
+			t.Fatalf("create target: %v", err)
+		}
+		return nil, nil
+	}
+	t.Cleanup(func() {
+		gitRepoRootFn = originalRepoRoot
+		gitBranchExistsFn = originalBranchExists
+		gitWorktreeAddFn = originalWorktreeAdd
+	})
+
+	if _, err := worktreeProject(root, source, "Feature", fixedNow()); err != nil {
+		t.Fatalf("worktreeProject returned error: %v", err)
+	}
+}
+
+func TestWorktreeProjectReturnsNotGitRepo(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "hatchery")
+	source := filepath.Join(t.TempDir(), "source")
+	if err := os.MkdirAll(source, 0o755); err != nil {
+		t.Fatalf("create source dir: %v", err)
+	}
+
+	originalRepoRoot := gitRepoRootFn
+	gitRepoRootFn = func(string) (string, error) {
+		return "", errNotGitRepo
+	}
+	t.Cleanup(func() {
+		gitRepoRootFn = originalRepoRoot
+	})
+
+	_, err := worktreeProject(root, source, "Feature", fixedNow())
+	if !errors.Is(err, errNotGitRepo) {
+		t.Fatalf("expected errNotGitRepo, got %v", err)
 	}
 }

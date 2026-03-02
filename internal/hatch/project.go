@@ -18,12 +18,16 @@ import (
 var (
 	errInvalidName   = errors.New("project name must contain at least one valid character")
 	errInvalidGitURL = errors.New("git URL must use ssh or https")
+	errNotGitRepo    = errors.New("path is not a git repository")
 )
 
 var invalidNameChars = regexp.MustCompile(`[^a-zA-Z0-9._-]+`)
 var gitSCPURLPattern = regexp.MustCompile(`^[^@\s]+@[^:\s]+:.+`)
 
 var gitCloneFn = runGitClone
+var gitRepoRootFn = resolveGitRepoRoot
+var gitBranchExistsFn = runGitBranchExists
+var gitWorktreeAddFn = runGitWorktreeAdd
 
 type Project struct {
 	Name string
@@ -147,6 +151,73 @@ func copyProject(root, source, name string, now time.Time) (string, error) {
 	return target, nil
 }
 
+func worktreeProject(root, source, name string, now time.Time) (string, error) {
+	dirName, err := projectDirName(name, now)
+	if err != nil {
+		return "", err
+	}
+
+	resolvedSource, err := expandPath(source)
+	if err != nil {
+		return "", err
+	}
+
+	sourceInfo, err := os.Stat(resolvedSource)
+	if err != nil {
+		return "", fmt.Errorf("read source directory: %w", err)
+	}
+	if !sourceInfo.IsDir() {
+		return "", fmt.Errorf("source must be a directory: %s", resolvedSource)
+	}
+
+	repoRoot, err := gitRepoRootFn(resolvedSource)
+	if err != nil {
+		return "", err
+	}
+
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		return "", fmt.Errorf("create hatchery root: %w", err)
+	}
+
+	target := filepath.Join(root, dirName)
+	if _, err := os.Stat(target); err == nil {
+		return "", fmt.Errorf("project already exists: %s", target)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", fmt.Errorf("check project directory: %w", err)
+	}
+
+	branchName, err := nextAvailableBranchName(repoRoot, dirName)
+	if err != nil {
+		return "", err
+	}
+
+	output, err := gitWorktreeAddFn(repoRoot, target, branchName)
+	if err != nil {
+		_ = os.RemoveAll(target)
+		msg := strings.TrimSpace(string(output))
+		if msg != "" {
+			return "", fmt.Errorf("create git worktree: %s", msg)
+		}
+		return "", fmt.Errorf("create git worktree: %w", err)
+	}
+
+	return target, nil
+}
+
+func nextAvailableBranchName(repoRoot, base string) (string, error) {
+	candidate := base
+	for i := 2; ; i++ {
+		exists, err := gitBranchExistsFn(repoRoot, candidate)
+		if err != nil {
+			return "", fmt.Errorf("check git branch %q: %w", candidate, err)
+		}
+		if !exists {
+			return candidate, nil
+		}
+		candidate = fmt.Sprintf("%s-%d", base, i)
+	}
+}
+
 func isGitURL(raw string) bool {
 	value := strings.TrimSpace(raw)
 	if value == "" {
@@ -246,6 +317,55 @@ func cloneProject(root, repoURL string, now time.Time) (string, error) {
 
 func runGitClone(repoURL, target string) ([]byte, error) {
 	cmd := exec.Command("git", "clone", "--", repoURL, target)
+	return cmd.CombinedOutput()
+}
+
+func resolveGitRepoRoot(source string) (string, error) {
+	cmd := exec.Command("git", "-C", source, "rev-parse", "--show-toplevel")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		var execErr *exec.Error
+		if errors.As(err, &execErr) && errors.Is(execErr.Err, exec.ErrNotFound) {
+			return "", fmt.Errorf("git command not found")
+		}
+
+		text := strings.ToLower(string(output))
+		if strings.Contains(text, "not a git repository") {
+			return "", errNotGitRepo
+		}
+
+		msg := strings.TrimSpace(string(output))
+		if msg != "" {
+			return "", fmt.Errorf("detect git repository: %s", msg)
+		}
+		return "", fmt.Errorf("detect git repository: %w", err)
+	}
+
+	root := strings.TrimSpace(string(output))
+	if root == "" {
+		return "", fmt.Errorf("detect git repository: empty repo root")
+	}
+	return root, nil
+}
+
+func runGitBranchExists(repoRoot, branch string) (bool, error) {
+	cmd := exec.Command("git", "-C", repoRoot, "show-ref", "--verify", "--quiet", "refs/heads/"+branch)
+	if err := cmd.Run(); err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+			return false, nil
+		}
+		var execErr *exec.Error
+		if errors.As(err, &execErr) && errors.Is(execErr.Err, exec.ErrNotFound) {
+			return false, fmt.Errorf("git command not found")
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+func runGitWorktreeAdd(repoRoot, target, branch string) ([]byte, error) {
+	cmd := exec.Command("git", "-C", repoRoot, "worktree", "add", "-b", branch, target)
 	return cmd.CombinedOutput()
 }
 

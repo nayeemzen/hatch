@@ -11,7 +11,8 @@
 
 - `hatch <name>`: create `~/hatchery/<yyyy-mm-dd>-<name>`
 - `hatch <git-url>`: clone an ssh/https repo into `~/hatchery/<yyyy-mm-dd>-<repo-name>`
-- `hatch <path> <name>`: copy a source directory into `~/hatchery/<yyyy-mm-dd>-<name>`
+- `hatch <path> <name>`: create a git worktree if `<path>` is a git repo, otherwise copy
+- `hatch --copy <path> <name>` or `hatch -c <path> <name>`: force copy mode
 - `hatch`: interactive browser with live fuzzy filtering
 - Browser actions: arrow keys to move, `Enter` to open/create, `Ctrl+A` to archive, `Ctrl+R` to remove
 - Shell hook for auto-`cd`
@@ -83,6 +84,7 @@ Patterns:
 hatch <name>
 hatch <git-url>
 hatch <path> <name>
+hatch --copy <path> <name>
 hatch
 ```
 
@@ -95,6 +97,8 @@ hatch spike-auth
 hatch git@github.com:nayeemzen/hatch.git
 hatch https://github.com/nayeemzen/hatch.git
 hatch ~/templates/service-base payment-service
+hatch ~/code/my-repo feature-spike
+hatch --copy ~/code/my-repo repo-snapshot
 hatch
 ```
 

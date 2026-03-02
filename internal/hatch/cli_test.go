@@ -67,6 +67,133 @@ func TestRunCopy(t *testing.T) {
 	}
 }
 
+func TestRunPathNameUsesWorktreeForGitRepo(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "hatchery")
+	t.Setenv("HATCHERY_HOME", root)
+
+	wantPath := filepath.Join(root, "2026-02-28-feature")
+	originalWorktree := worktreeProjectFn
+	originalCopy := copyProjectFn
+	worktreeProjectFn = func(gotRoot, source, name string, now time.Time) (string, error) {
+		if gotRoot != root {
+			t.Fatalf("worktree root = %q, want %q", gotRoot, root)
+		}
+		if source != "/tmp/repo" || name != "feature" {
+			t.Fatalf("unexpected worktree args source=%q name=%q", source, name)
+		}
+		return wantPath, nil
+	}
+	copyProjectFn = func(_, _, _ string, _ time.Time) (string, error) {
+		t.Fatalf("copyProjectFn should not be called when worktree succeeds")
+		return "", nil
+	}
+	t.Cleanup(func() {
+		worktreeProjectFn = originalWorktree
+		copyProjectFn = originalCopy
+	})
+
+	out := new(bytes.Buffer)
+	errOut := new(bytes.Buffer)
+	if err := run([]string{"/tmp/repo", "feature"}, strings.NewReader(""), out, errOut, fixedNow); err != nil {
+		t.Fatalf("run returned error: %v", err)
+	}
+	if !strings.Contains(out.String(), "Worktree created: "+wantPath) {
+		t.Fatalf("expected worktree output, got %q", out.String())
+	}
+}
+
+func TestRunPathNameFallsBackToCopyOnNonGit(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "hatchery")
+	t.Setenv("HATCHERY_HOME", root)
+
+	wantPath := filepath.Join(root, "2026-02-28-feature")
+	originalWorktree := worktreeProjectFn
+	originalCopy := copyProjectFn
+	worktreeProjectFn = func(_, _, _ string, _ time.Time) (string, error) {
+		return "", errNotGitRepo
+	}
+	copyProjectFn = func(gotRoot, source, name string, now time.Time) (string, error) {
+		if gotRoot != root {
+			t.Fatalf("copy root = %q, want %q", gotRoot, root)
+		}
+		if source != "/tmp/not-git" || name != "feature" {
+			t.Fatalf("unexpected copy args source=%q name=%q", source, name)
+		}
+		return wantPath, nil
+	}
+	t.Cleanup(func() {
+		worktreeProjectFn = originalWorktree
+		copyProjectFn = originalCopy
+	})
+
+	out := new(bytes.Buffer)
+	errOut := new(bytes.Buffer)
+	if err := run([]string{"/tmp/not-git", "feature"}, strings.NewReader(""), out, errOut, fixedNow); err != nil {
+		t.Fatalf("run returned error: %v", err)
+	}
+	if !strings.Contains(out.String(), "Copied into: "+wantPath) {
+		t.Fatalf("expected copy output, got %q", out.String())
+	}
+}
+
+func TestRunPathNameForceCopySkipsWorktree(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "hatchery")
+	t.Setenv("HATCHERY_HOME", root)
+
+	wantPath := filepath.Join(root, "2026-02-28-feature")
+	originalWorktree := worktreeProjectFn
+	originalCopy := copyProjectFn
+	worktreeProjectFn = func(_, _, _ string, _ time.Time) (string, error) {
+		t.Fatalf("worktreeProjectFn should not be called when --copy is set")
+		return "", nil
+	}
+	copyProjectFn = func(_, _, _ string, _ time.Time) (string, error) {
+		return wantPath, nil
+	}
+	t.Cleanup(func() {
+		worktreeProjectFn = originalWorktree
+		copyProjectFn = originalCopy
+	})
+
+	out := new(bytes.Buffer)
+	errOut := new(bytes.Buffer)
+	if err := run([]string{"--copy", "/tmp/repo", "feature"}, strings.NewReader(""), out, errOut, fixedNow); err != nil {
+		t.Fatalf("run returned error: %v", err)
+	}
+	if !strings.Contains(out.String(), "Copied into: "+wantPath) {
+		t.Fatalf("expected copy output, got %q", out.String())
+	}
+}
+
+func TestRunPathNameShortCopyFlagSkipsWorktree(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "hatchery")
+	t.Setenv("HATCHERY_HOME", root)
+
+	wantPath := filepath.Join(root, "2026-02-28-feature")
+	originalWorktree := worktreeProjectFn
+	originalCopy := copyProjectFn
+	worktreeProjectFn = func(_, _, _ string, _ time.Time) (string, error) {
+		t.Fatalf("worktreeProjectFn should not be called when -c is set")
+		return "", nil
+	}
+	copyProjectFn = func(_, _, _ string, _ time.Time) (string, error) {
+		return wantPath, nil
+	}
+	t.Cleanup(func() {
+		worktreeProjectFn = originalWorktree
+		copyProjectFn = originalCopy
+	})
+
+	out := new(bytes.Buffer)
+	errOut := new(bytes.Buffer)
+	if err := run([]string{"-c", "/tmp/repo", "feature"}, strings.NewReader(""), out, errOut, fixedNow); err != nil {
+		t.Fatalf("run returned error: %v", err)
+	}
+	if !strings.Contains(out.String(), "Copied into: "+wantPath) {
+		t.Fatalf("expected copy output, got %q", out.String())
+	}
+}
+
 func TestRunCloneFromGitURL(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "hatchery")
 	t.Setenv("HATCHERY_HOME", root)
@@ -147,6 +274,9 @@ func TestHelpOutput(t *testing.T) {
 	if !strings.Contains(out.String(), "--usage") {
 		t.Fatalf("help output missing --usage option: %q", out.String())
 	}
+	if !strings.Contains(out.String(), "--copy, -c") {
+		t.Fatalf("help output missing --copy option: %q", out.String())
+	}
 }
 
 func TestUsageFlagOutput(t *testing.T) {
@@ -166,5 +296,8 @@ func TestUsageFlagOutput(t *testing.T) {
 	}
 	if !strings.Contains(content, "fuzzy filter") {
 		t.Fatalf("usage output missing browser guidance: %q", content)
+	}
+	if !strings.Contains(content, "--copy or -c") {
+		t.Fatalf("usage output missing copy override guidance: %q", content)
 	}
 }

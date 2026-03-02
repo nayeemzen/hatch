@@ -15,12 +15,16 @@ import (
 
 var version = "0.1.0"
 var cloneProjectFn = cloneProject
+var createProjectFn = createProject
+var copyProjectFn = copyProject
+var worktreeProjectFn = worktreeProject
 
 type cliOptions struct {
 	cwdFile string
 	init    string
 	showVer bool
 	showUse bool
+	forceCP bool
 }
 
 func Main(args []string, in io.Reader, out, errOut io.Writer) int {
@@ -88,7 +92,7 @@ func run(args []string, in io.Reader, out, errOut io.Writer, now func() time.Tim
 			projectPath, err = cloneProjectFn(root, remaining[0], now())
 			action = "Cloned into: "
 		} else {
-			projectPath, err = createProject(root, remaining[0], now())
+			projectPath, err = createProjectFn(root, remaining[0], now())
 			action = "Created: "
 		}
 		if err != nil {
@@ -100,14 +104,27 @@ func run(args []string, in io.Reader, out, errOut io.Writer, now func() time.Tim
 		fmt.Fprintln(out, successStyle().Render(action+projectPath))
 		return nil
 	case 2:
-		projectPath, err := copyProject(root, remaining[0], remaining[1], now())
+		var (
+			projectPath string
+			action      = "Copied into: "
+		)
+		if options.forceCP {
+			projectPath, err = copyProjectFn(root, remaining[0], remaining[1], now())
+		} else {
+			projectPath, err = worktreeProjectFn(root, remaining[0], remaining[1], now())
+			if errors.Is(err, errNotGitRepo) {
+				projectPath, err = copyProjectFn(root, remaining[0], remaining[1], now())
+			} else {
+				action = "Worktree created: "
+			}
+		}
 		if err != nil {
 			return err
 		}
 		if err := writeCWD(options.cwdFile, projectPath); err != nil {
 			return err
 		}
-		fmt.Fprintln(out, successStyle().Render("Copied into: "+projectPath))
+		fmt.Fprintln(out, successStyle().Render(action+projectPath))
 		return nil
 	default:
 		return fmt.Errorf("invalid argument count (%d)\n\n%s", len(remaining), usageText)
@@ -123,6 +140,8 @@ func parseArgs(args []string) (cliOptions, []string, string, error) {
 	fs.StringVar(&options.init, "init", "", "print shell hook for zsh, bash, or fish")
 	fs.BoolVar(&options.showVer, "version", false, "print version")
 	fs.BoolVar(&options.showUse, "usage", false, "show styled usage guide")
+	fs.BoolVar(&options.forceCP, "copy", false, "force copy behavior for <path> <name>")
+	fs.BoolVar(&options.forceCP, "c", false, "shorthand for --copy")
 	fs.Usage = func() {}
 
 	err := fs.Parse(args)
@@ -148,7 +167,9 @@ func usage() string {
 		"      Clone ssh/https git URL into ~/hatchery/<yyyy-mm-dd>-<repo-name> and enter it.",
 		"",
 		"  hatch <path> <name>",
-		"      Copy <path> into ~/hatchery/<yyyy-mm-dd>-<name> and enter it.",
+		"      If <path> is a git repo, create a git worktree in ~/hatchery/<yyyy-mm-dd>-<name>.",
+		"      Otherwise copy <path> into ~/hatchery/<yyyy-mm-dd>-<name>.",
+		"      Use --copy or -c to always copy.",
 		"",
 		"  hatch",
 		"      Open the interactive browser with live fuzzy filtering.",
@@ -166,6 +187,7 @@ func usage() string {
 		"  --init <shell>   Print shell hook for zsh, bash, or fish",
 		"  --version        Print version",
 		"  --usage          Show styled usage guide",
+		"  --copy, -c       Force copy behavior for hatch <path> <name>",
 		"  --help           Show this help message",
 	}
 	return strings.Join(copy, "\n") + "\n"
@@ -202,7 +224,8 @@ func usageCard() string {
 		"",
 		spacer,
 		body.Render("  " + command.Render("hatch <path> <name>")),
-		body.Render("    Copy a local directory into a dated project."),
+		body.Render("    Create a worktree when <path> is git; otherwise copy."),
+		body.Render("    Add --copy or -c to force copy mode."),
 		"",
 		spacer,
 		body.Render("  " + command.Render("hatch")),
