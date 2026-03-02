@@ -20,6 +20,7 @@ type cliOptions struct {
 	cwdFile string
 	init    string
 	showVer bool
+	showUse bool
 }
 
 func Main(args []string, in io.Reader, out, errOut io.Writer) int {
@@ -42,6 +43,11 @@ func run(args []string, in io.Reader, out, errOut io.Writer, now func() time.Tim
 
 	if options.showVer {
 		fmt.Fprintf(out, "hatch %s\n", version)
+		return nil
+	}
+
+	if options.showUse {
+		fmt.Fprintln(out, usageCard())
 		return nil
 	}
 
@@ -116,6 +122,7 @@ func parseArgs(args []string) (cliOptions, []string, string, error) {
 	fs.StringVar(&options.cwdFile, "cwd-file", "", "internal: write selected path to file")
 	fs.StringVar(&options.init, "init", "", "print shell hook for zsh, bash, or fish")
 	fs.BoolVar(&options.showVer, "version", false, "print version")
+	fs.BoolVar(&options.showUse, "usage", false, "show styled usage guide")
 	fs.Usage = func() {}
 
 	err := fs.Parse(args)
@@ -158,9 +165,63 @@ func usage() string {
 		"Options:",
 		"  --init <shell>   Print shell hook for zsh, bash, or fish",
 		"  --version        Print version",
+		"  --usage          Show styled usage guide",
 		"  --help           Show this help message",
 	}
 	return strings.Join(copy, "\n") + "\n"
+}
+
+func usageCard() string {
+	neutralText := lipgloss.AdaptiveColor{Light: "#334155", Dark: "#E2E8F0"}
+	neutralMuted := lipgloss.AdaptiveColor{Light: "#64748B", Dark: "#A5B4CF"}
+	accentLavender := lipgloss.AdaptiveColor{Light: "#9B8FC9", Dark: "#C5B7F2"}
+	accentTeal := lipgloss.AdaptiveColor{Light: "#6FAFAE", Dark: "#8ED8D4"}
+	accentPeach := lipgloss.AdaptiveColor{Light: "#D6A382", Dark: "#F2C6AD"}
+	accentMint := lipgloss.AdaptiveColor{Light: "#72B79A", Dark: "#9FDABE"}
+
+	title := lipgloss.NewStyle().Bold(true).Foreground(accentTeal).Render("hatch")
+	subtitle := lipgloss.NewStyle().Foreground(neutralMuted).Render("Usage Guidelines")
+
+	headline := lipgloss.JoinHorizontal(lipgloss.Top, title, "  ", subtitle)
+
+	sectionTitle := lipgloss.NewStyle().Bold(true).Foreground(accentPeach)
+	command := lipgloss.NewStyle().Bold(true).Foreground(accentLavender)
+	body := lipgloss.NewStyle().Foreground(neutralText)
+	note := lipgloss.NewStyle().Foreground(accentMint)
+
+	sections := []string{
+		headline,
+		"",
+		sectionTitle.Render("Create"),
+		body.Render("  " + command.Render("hatch <name>")),
+		body.Render("    Create a dated project in ~/hatchery and enter it."),
+		"",
+		sectionTitle.Render("Clone"),
+		body.Render("  " + command.Render("hatch <git-url>")),
+		body.Render("    Clone ssh/https URL into ~/hatchery/<yyyy-mm-dd>-<repo-name>."),
+		"",
+		sectionTitle.Render("Copy Template"),
+		body.Render("  " + command.Render("hatch <path> <name>")),
+		body.Render("    Copy a local directory into a dated project."),
+		"",
+		sectionTitle.Render("Browser"),
+		body.Render("  " + command.Render("hatch")),
+		body.Render("    Type to fuzzy filter, Enter to open/create."),
+		body.Render("    Ctrl+A archive  •  Ctrl+R remove  •  Esc quit"),
+		"",
+		sectionTitle.Render("Shell Hook"),
+		body.Render("  " + command.Render(`eval "$(hatch --init zsh)"`)),
+		"",
+		note.Render("Tip: run hatch --help for full plain-text flags."),
+	}
+
+	card := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(accentLavender).
+		Padding(1, 2).
+		MaxWidth(96)
+
+	return card.Render(strings.Join(sections, "\n"))
 }
 
 func writeCWD(cwdFile, path string) error {

@@ -144,4 +144,27 @@ func TestHelpOutput(t *testing.T) {
 	if !strings.Contains(out.String(), "hatch <git-url>") {
 		t.Fatalf("help output missing git url usage: %q", out.String())
 	}
+	if !strings.Contains(out.String(), "--usage") {
+		t.Fatalf("help output missing --usage option: %q", out.String())
+	}
+}
+
+func TestUsageFlagOutput(t *testing.T) {
+	out := new(bytes.Buffer)
+	errOut := new(bytes.Buffer)
+	exitCode := Main([]string{"--usage"}, strings.NewReader(""), out, errOut)
+	if exitCode != 0 {
+		t.Fatalf("usage exit code = %d, want 0", exitCode)
+	}
+
+	content := out.String()
+	if !strings.Contains(content, "Usage Guidelines") {
+		t.Fatalf("usage output missing heading: %q", content)
+	}
+	if !strings.Contains(content, "hatch <git-url>") {
+		t.Fatalf("usage output missing git pattern: %q", content)
+	}
+	if !strings.Contains(content, "fuzzy filter") {
+		t.Fatalf("usage output missing browser guidance: %q", content)
+	}
 }

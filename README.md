@@ -74,6 +74,7 @@ hatch --init fish | source
 
 ```bash
 hatch --help
+hatch --usage
 ```
 
 Patterns:
@@ -84,6 +85,8 @@ hatch <git-url>
 hatch <path> <name>
 hatch
 ```
+
+`hatch --usage` prints a styled pastel usage guide in the terminal.
 
 Examples:
 
