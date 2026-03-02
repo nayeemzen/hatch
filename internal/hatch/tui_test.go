@@ -203,6 +203,13 @@ func TestBrowserWorktreeAction(t *testing.T) {
 	if model.action != actionWorktreeInput {
 		t.Fatalf("expected actionWorktreeInput, got %v", model.action)
 	}
+	prompt := model.actionPrompt()
+	if !strings.Contains(prompt, "(type to edit)") {
+		t.Fatalf("worktree prompt should include edit hint, got %q", prompt)
+	}
+	if !strings.Contains(prompt, "\n│ "+model.promptInput) {
+		t.Fatalf("worktree prompt should render new name on separate line, got %q", prompt)
+	}
 
 	model.promptInput = "hatch-wt-test"
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
