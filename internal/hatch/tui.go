@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -16,12 +17,17 @@ import (
 
 var errNoSelection = errors.New("no project selected")
 
-type confirmAction int
+var duplicateProjectFn = copyProject
+var createWorktreeFn = worktreeProject
+
+type browserAction int
 
 const (
-	confirmNone confirmAction = iota
-	confirmArchive
-	confirmRemove
+	actionNone browserAction = iota
+	actionDeleteConfirm
+	actionRenameInput
+	actionDuplicateInput
+	actionWorktreeInput
 )
 
 type scoredIndex struct {
@@ -96,7 +102,8 @@ type browserModel struct {
 	width        int
 	height       int
 	status       string
-	confirm      confirmAction
+	action       browserAction
+	promptInput  string
 	selectedPath string
 	err          error
 	quitting     bool
@@ -133,8 +140,8 @@ func (m browserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		return m, nil
 	case tea.KeyMsg:
-		if m.confirm != confirmNone {
-			return m.updateConfirm(msg)
+		if m.action != actionNone {
+			return m.updateAction(msg)
 		}
 		return m.updateMain(msg)
 	default:
@@ -169,14 +176,35 @@ func (m browserModel) updateMain(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.selectedPath = selected.Path
 		m.quitting = true
 		return m, tea.Quit
-	case tea.KeyCtrlA:
-		if m.currentProject() != nil {
-			m.confirm = confirmArchive
-		}
-		return m, nil
 	case tea.KeyCtrlR:
 		if m.currentProject() != nil {
-			m.confirm = confirmRemove
+			base := m.defaultProjectBaseName(m.currentProject().Name)
+			m.action = actionRenameInput
+			m.promptInput = base
+			m.status = "Rename selected project"
+		}
+		return m, nil
+	case tea.KeyCtrlW:
+		if m.currentProject() != nil {
+			m.action = actionDeleteConfirm
+			m.promptInput = ""
+			m.status = "Confirm delete"
+		}
+		return m, nil
+	case tea.KeyCtrlV:
+		if m.currentProject() != nil {
+			base := m.defaultProjectBaseName(m.currentProject().Name) + "-copy"
+			m.action = actionDuplicateInput
+			m.promptInput = base
+			m.status = "Duplicate selected project"
+		}
+		return m, nil
+	case tea.KeyCtrlG:
+		if m.currentProject() != nil {
+			base := m.defaultProjectBaseName(m.currentProject().Name) + "-wt"
+			m.action = actionWorktreeInput
+			m.promptInput = base
+			m.status = "Create worktree from selected project"
 		}
 		return m, nil
 	case tea.KeyBackspace, tea.KeyDelete:
@@ -209,54 +237,126 @@ func (m browserModel) updateMain(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 }
 
-func (m browserModel) updateConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m browserModel) updateAction(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.Type {
 	case tea.KeyEsc, tea.KeyCtrlC:
-		m.confirm = confirmNone
+		m.action = actionNone
+		m.promptInput = ""
 		m.status = "Action cancelled"
 		return m, nil
 	case tea.KeyEnter:
-		return m.applyConfirm()
-	case tea.KeyRunes:
-		switch strings.ToLower(string(msg.Runes)) {
-		case "y":
-			return m.applyConfirm()
-		case "n":
-			m.confirm = confirmNone
-			m.status = "Action cancelled"
+		return m.applyAction()
+	case tea.KeyBackspace, tea.KeyDelete:
+		if m.action == actionDeleteConfirm {
 			return m, nil
 		}
+		if len(m.promptInput) > 0 {
+			_, size := utf8.DecodeLastRuneInString(m.promptInput)
+			m.promptInput = m.promptInput[:len(m.promptInput)-size]
+		}
+		return m, nil
+	case tea.KeySpace:
+		if m.action != actionDeleteConfirm {
+			m.promptInput += " "
+		}
+		return m, nil
+	case tea.KeyRunes:
+		text := strings.ToLower(string(msg.Runes))
+		if m.action == actionDeleteConfirm {
+			switch text {
+			case "y":
+				return m.applyAction()
+			case "n":
+				m.action = actionNone
+				m.promptInput = ""
+				m.status = "Action cancelled"
+				return m, nil
+			}
+			return m, nil
+		}
+		m.promptInput += string(msg.Runes)
 	}
 	return m, nil
 }
 
-func (m browserModel) applyConfirm() (tea.Model, tea.Cmd) {
+func (m browserModel) applyAction() (tea.Model, tea.Cmd) {
 	selected := m.currentProject()
 	if selected == nil {
-		m.confirm = confirmNone
+		m.action = actionNone
+		m.promptInput = ""
 		m.status = "No matching project"
 		return m, nil
 	}
 
-	switch m.confirm {
-	case confirmArchive:
-		target, err := archiveProject(m.root, selected.Path)
-		if err != nil {
-			m.err = err
-			m.quitting = true
-			return m, tea.Quit
+	var err error
+	switch m.action {
+	case actionDeleteConfirm:
+		err = removeProject(selected.Path)
+		if err == nil {
+			m.status = fmt.Sprintf("Deleted %s", selected.Name)
 		}
-		m.status = fmt.Sprintf("Archived %s -> %s", selected.Name, filepath.Base(target))
-	case confirmRemove:
-		if err := removeProject(selected.Path); err != nil {
-			m.err = err
-			m.quitting = true
-			return m, tea.Quit
-		}
-		m.status = fmt.Sprintf("Removed %s", selected.Name)
+	case actionRenameInput:
+		err = m.renameProject(selected, m.promptInput)
+	case actionDuplicateInput:
+		err = m.duplicateProject(selected, m.promptInput)
+	case actionWorktreeInput:
+		err = m.createWorktree(selected, m.promptInput)
+	}
+	if err != nil {
+		m.status = err.Error()
+		return m, nil
 	}
 
-	m.confirm = confirmNone
+	m.action = actionNone
+	m.promptInput = ""
+	return m.reloadProjects()
+}
+
+func (m browserModel) renameProject(selected *Project, newName string) error {
+	norm, err := normalizeName(newName)
+	if err != nil {
+		return fmt.Errorf("rename failed: %w", err)
+	}
+	targetName := norm
+	if prefix := datedPrefix(selected.Name); prefix != "" {
+		targetName = prefix + "-" + norm
+	}
+	targetPath := filepath.Join(m.root, targetName)
+	if targetPath == selected.Path {
+		m.status = "Name unchanged"
+		return nil
+	}
+	if _, err := os.Stat(targetPath); err == nil {
+		return fmt.Errorf("rename failed: project already exists: %s", targetPath)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("rename failed: %w", err)
+	}
+	if err := os.Rename(selected.Path, targetPath); err != nil {
+		return fmt.Errorf("rename failed: %w", err)
+	}
+	m.status = fmt.Sprintf("Renamed %s -> %s", selected.Name, targetName)
+	return nil
+}
+
+func (m browserModel) duplicateProject(selected *Project, newName string) error {
+	target, err := duplicateProjectFn(m.root, selected.Path, newName, m.currentTime())
+	if err != nil {
+		return fmt.Errorf("duplicate failed: %w", err)
+	}
+	m.status = fmt.Sprintf("Duplicated %s -> %s", selected.Name, filepath.Base(target))
+	return nil
+}
+
+func (m browserModel) createWorktree(selected *Project, newName string) error {
+	target, err := createWorktreeFn(m.root, selected.Path, newName, m.currentTime())
+	if err != nil {
+		return fmt.Errorf("worktree failed: %w", err)
+	}
+	m.status = fmt.Sprintf("Worktree created %s -> %s", selected.Name, filepath.Base(target))
+	return nil
+}
+
+func (m browserModel) reloadProjects() (tea.Model, tea.Cmd) {
 	projects, err := listProjects(m.root)
 	if err != nil {
 		m.err = err
@@ -332,7 +432,7 @@ func (m browserModel) View() string {
 		selectedInfo = m.styles.detail.Render(selected.Path)
 	}
 
-	help := m.styles.help.Render("↑/↓ move  •  type to filter  •  Enter open/create  •  Ctrl+A archive  •  Ctrl+R remove  •  Esc quit")
+	help := m.styles.help.Render("↑/↓ move  •  type to filter  •  Enter open/create  •  Ctrl+R rename  •  Ctrl+W delete  •  Ctrl+V duplicate  •  Ctrl+G worktree  •  Esc quit")
 	status := m.styles.status.Render(m.status)
 
 	body := []string{
@@ -350,8 +450,8 @@ func (m browserModel) View() string {
 
 	body = append(body, "", status, help)
 
-	if m.confirm != confirmNone {
-		body = append(body, "", m.confirmPrompt())
+	if m.action != actionNone {
+		body = append(body, "", m.actionPrompt())
 	}
 
 	content := strings.Join(body, "\n")
@@ -447,17 +547,49 @@ func (m browserModel) createFromQuery() (tea.Model, tea.Cmd) {
 	return m, tea.Quit
 }
 
-func (m browserModel) confirmPrompt() string {
+func (m browserModel) actionPrompt() string {
 	selected := m.currentProject()
 	if selected == nil {
 		return ""
 	}
-	action := "Archive"
-	if m.confirm == confirmRemove {
-		action = "Remove"
+
+	switch m.action {
+	case actionDeleteConfirm:
+		copy := fmt.Sprintf("Delete %s?  [y/Enter] confirm  [n/Esc] cancel", selected.Name)
+		return m.styles.confirm.Render(copy)
+	case actionRenameInput:
+		copy := fmt.Sprintf("Rename %s as: %s  [Enter] apply  [Esc] cancel", selected.Name, m.promptInput)
+		return m.styles.confirm.Render(copy)
+	case actionDuplicateInput:
+		copy := fmt.Sprintf("Duplicate %s as: %s  [Enter] apply  [Esc] cancel", selected.Name, m.promptInput)
+		return m.styles.confirm.Render(copy)
+	case actionWorktreeInput:
+		copy := fmt.Sprintf("Git worktree from %s as: %s  [Enter] apply  [Esc] cancel", selected.Name, m.promptInput)
+		return m.styles.confirm.Render(copy)
+	default:
+		return ""
 	}
-	copy := fmt.Sprintf("%s %s?  [y/Enter] confirm  [n/Esc] cancel", action, selected.Name)
-	return m.styles.confirm.Render(copy)
+}
+
+func datedPrefix(name string) string {
+	if len(name) < 11 {
+		return ""
+	}
+	prefix := name[:10]
+	if _, err := time.Parse("2006-01-02", prefix); err != nil {
+		return ""
+	}
+	if name[10] != '-' {
+		return ""
+	}
+	return prefix
+}
+
+func (m browserModel) defaultProjectBaseName(name string) string {
+	if prefix := datedPrefix(name); prefix != "" && len(name) > 11 {
+		return name[11:]
+	}
+	return name
 }
 
 func runBrowser(root string, in io.Reader, out io.Writer) (string, error) {

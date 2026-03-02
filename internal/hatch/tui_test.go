@@ -40,7 +40,7 @@ func TestBrowserViewContainsPolishedCopy(t *testing.T) {
 	model.refreshFilter()
 
 	view := model.View()
-	mustContain := []string{"hatch", "Project hatchery", "Ctrl+A archive", "Ctrl+R remove", "Filter"}
+	mustContain := []string{"hatch", "Project hatchery", "Ctrl+R rename", "Ctrl+W delete", "Ctrl+V", "Ctrl+G", "Filter"}
 	for _, snippet := range mustContain {
 		if !strings.Contains(view, snippet) {
 			t.Fatalf("view should contain %q, got:\n%s", snippet, view)
@@ -64,7 +64,7 @@ func TestBrowserFilterIncludesNonPrefixMatch(t *testing.T) {
 	}
 }
 
-func TestBrowserArchiveAction(t *testing.T) {
+func TestBrowserDeleteAction(t *testing.T) {
 	t.Parallel()
 
 	root := filepath.Join(t.TempDir(), "hatchery")
@@ -74,23 +74,143 @@ func TestBrowserArchiveAction(t *testing.T) {
 	}
 
 	model := newBrowserModel(root, []Project{{Name: "2026-02-28-hatch", Path: projectPath}})
-	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyCtrlA})
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyCtrlW})
 	model = updated.(browserModel)
-	if model.confirm != confirmArchive {
-		t.Fatalf("expected confirmArchive state, got %v", model.confirm)
+	if model.action != actionDeleteConfirm {
+		t.Fatalf("expected actionDeleteConfirm state, got %v", model.action)
 	}
 
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
 	model = updated.(browserModel)
 
-	if model.confirm != confirmNone {
-		t.Fatalf("expected confirmNone after archive, got %v", model.confirm)
+	if model.action != actionNone {
+		t.Fatalf("expected actionNone after delete, got %v", model.action)
 	}
-	if _, err := os.Stat(filepath.Join(root, "archive", "2026-02-28-hatch")); err != nil {
-		t.Fatalf("expected archived directory: %v", err)
+	if _, err := os.Stat(filepath.Join(root, "2026-02-28-hatch")); !os.IsNotExist(err) {
+		t.Fatalf("expected deleted directory to be gone, err=%v", err)
 	}
 	if len(model.projects) != 0 {
 		t.Fatalf("expected project list to refresh and become empty, got %d", len(model.projects))
+	}
+}
+
+func TestBrowserRenameAction(t *testing.T) {
+	t.Parallel()
+
+	root := filepath.Join(t.TempDir(), "hatchery")
+	oldPath := filepath.Join(root, "2026-02-28-hatch")
+	if err := os.MkdirAll(oldPath, 0o755); err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+
+	model := newBrowserModel(root, []Project{{Name: "2026-02-28-hatch", Path: oldPath}})
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyCtrlR})
+	model = updated.(browserModel)
+	if model.action != actionRenameInput {
+		t.Fatalf("expected actionRenameInput, got %v", model.action)
+	}
+
+	model.promptInput = "new-name"
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(browserModel)
+
+	newPath := filepath.Join(root, "2026-02-28-new-name")
+	if _, err := os.Stat(newPath); err != nil {
+		t.Fatalf("expected renamed directory: %v", err)
+	}
+	if _, err := os.Stat(oldPath); !os.IsNotExist(err) {
+		t.Fatalf("expected old directory removed, err=%v", err)
+	}
+}
+
+func TestBrowserDuplicateAction(t *testing.T) {
+	t.Parallel()
+
+	root := filepath.Join(t.TempDir(), "hatchery")
+	sourcePath := filepath.Join(root, "2026-02-28-hatch")
+	if err := os.MkdirAll(sourcePath, 0o755); err != nil {
+		t.Fatalf("create source project: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sourcePath, "README.md"), []byte("seed"), 0o644); err != nil {
+		t.Fatalf("write source file: %v", err)
+	}
+
+	fixedNow := func() time.Time {
+		return time.Date(2026, time.March, 1, 12, 0, 0, 0, time.UTC)
+	}
+	model := newBrowserModelWithClock(root, []Project{{Name: "2026-02-28-hatch", Path: sourcePath}}, fixedNow)
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyCtrlV})
+	model = updated.(browserModel)
+	if model.action != actionDuplicateInput {
+		t.Fatalf("expected actionDuplicateInput, got %v", model.action)
+	}
+
+	model.promptInput = "hatch-dup"
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(browserModel)
+
+	dupPath := filepath.Join(root, "2026-03-01-hatch-dup")
+	if _, err := os.Stat(dupPath); err != nil {
+		t.Fatalf("expected duplicated directory: %v", err)
+	}
+	content, err := os.ReadFile(filepath.Join(dupPath, "README.md"))
+	if err != nil {
+		t.Fatalf("expected duplicated file: %v", err)
+	}
+	if string(content) != "seed" {
+		t.Fatalf("unexpected duplicated content: %q", string(content))
+	}
+}
+
+func TestBrowserWorktreeAction(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "hatchery")
+	sourcePath := filepath.Join(root, "2026-02-28-hatch")
+	if err := os.MkdirAll(sourcePath, 0o755); err != nil {
+		t.Fatalf("create source project: %v", err)
+	}
+
+	fixedNow := func() time.Time {
+		return time.Date(2026, time.March, 1, 12, 0, 0, 0, time.UTC)
+	}
+
+	originalCreateWorktree := createWorktreeFn
+	createWorktreeFn = func(gotRoot, source, name string, now time.Time) (string, error) {
+		if gotRoot != root {
+			t.Fatalf("worktree root = %q, want %q", gotRoot, root)
+		}
+		if source != sourcePath {
+			t.Fatalf("worktree source = %q, want %q", source, sourcePath)
+		}
+		if name != "hatch-wt-test" {
+			t.Fatalf("worktree name = %q", name)
+		}
+		if now.Format("2006-01-02") != "2026-03-01" {
+			t.Fatalf("unexpected now %s", now.Format(time.RFC3339))
+		}
+		target := filepath.Join(root, "2026-03-01-hatch-wt-test")
+		if err := os.MkdirAll(target, 0o755); err != nil {
+			t.Fatalf("create worktree target: %v", err)
+		}
+		return target, nil
+	}
+	t.Cleanup(func() {
+		createWorktreeFn = originalCreateWorktree
+	})
+
+	model := newBrowserModelWithClock(root, []Project{{Name: "2026-02-28-hatch", Path: sourcePath}}, fixedNow)
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyCtrlG})
+	model = updated.(browserModel)
+	if model.action != actionWorktreeInput {
+		t.Fatalf("expected actionWorktreeInput, got %v", model.action)
+	}
+
+	model.promptInput = "hatch-wt-test"
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(browserModel)
+
+	worktreePath := filepath.Join(root, "2026-03-01-hatch-wt-test")
+	if _, err := os.Stat(worktreePath); err != nil {
+		t.Fatalf("expected worktree directory: %v", err)
 	}
 }
 

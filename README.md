@@ -14,7 +14,7 @@
 - `hatch <path> <name>`: create a git worktree if `<path>` is a git repo, otherwise copy
 - `hatch --copy <path> <name>` or `hatch -c <path> <name>`: force copy mode
 - `hatch`: interactive browser with live fuzzy filtering
-- Browser actions: arrow keys to move, `Enter` to open/create, `Ctrl+A` to archive, `Ctrl+R` to remove
+- Browser actions: arrow keys to move, `Enter` to open/create, `Ctrl+R` rename, `Ctrl+W` delete, `Ctrl+V` duplicate, `Ctrl+G` git worktree
 - Shell hook for auto-`cd`
 
 
