@@ -565,7 +565,7 @@ func (m browserModel) actionPrompt() string {
 		return m.styles.confirm.Render(copy)
 	case actionWorktreeInput:
 		copy := fmt.Sprintf(
-			"Git worktree from %s (type to edit)\n%s\n[Enter] apply  [Esc] cancel",
+			"Git worktree from %s (type to edit)\n› %s\n[Enter] apply  [Esc] cancel",
 			selected.Name,
 			m.promptInput,
 		)
