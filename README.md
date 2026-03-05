@@ -31,7 +31,7 @@ curl -fsSL https://raw.githubusercontent.com/nayeemzen/hatch/main/install.sh | s
 Pin a specific version:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/nayeemzen/hatch/main/install.sh | VERSION=v0.1.0 sh
+curl -fsSL https://raw.githubusercontent.com/nayeemzen/hatch/main/install.sh | VERSION=v0.1.1 sh
 ```
 
 Install to a custom directory:
